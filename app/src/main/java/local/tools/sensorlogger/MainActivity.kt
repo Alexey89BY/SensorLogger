@@ -24,8 +24,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var sensorManager: SensorManager
     private lateinit var accelerometerSensor: Sensor
     private lateinit var gyroscopeSensor: Sensor
-    private lateinit var accelerometerListener: MemsSensorListener
-    private lateinit var gyroscopeListener: MemsSensorListener
+    private lateinit var accelerometerListener: MEMSSensorListener
+    private lateinit var gyroscopeListener: MEMSSensorListener
     private lateinit var sensorTimer: Timer
     private var isLoggerStarted = false
 
@@ -67,8 +67,8 @@ class MainActivity : AppCompatActivity() {
         sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
         accelerometerSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)!!
         gyroscopeSensor = sensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE)!!
-        accelerometerListener = MemsSensorListener("Accelerometer")
-        gyroscopeListener = MemsSensorListener("Gyroscope")
+        accelerometerListener = MEMSSensorListener("Accelerometer")
+        gyroscopeListener = MEMSSensorListener("Gyroscope")
 
         val spinnerItems = listOf(
             "Both sensors (accelerometer & gyroscope)",
@@ -241,18 +241,20 @@ class MainActivity : AppCompatActivity() {
 
     private fun loggerCalibrate() {
         val meanAccel = accelerometerListener.getMean()
-        accelerometerListener.setZero(meanAccel)
+        val deviationAccel = accelerometerListener.getDeviation()
+        accelerometerListener.setZero(meanAccel, deviationAccel)
 
         val meanGyro = gyroscopeListener.getMean()
-        gyroscopeListener.setZero(meanGyro)
+        val deviationGyro = gyroscopeListener.getDeviation()
+        gyroscopeListener.setZero(meanGyro, deviationGyro)
 
         updateZeroInfo()
     }
 
     private fun loggerResetCalibration() {
-        val zero = MemsSensorListener.Sample()
-        accelerometerListener.setZero(zero)
-        gyroscopeListener.setZero(zero)
+        val zero = MEMSSensorListener.Vector3D()
+        accelerometerListener.setZero(zero, zero)
+        gyroscopeListener.setZero(zero, zero)
 
         updateZeroInfo()
     }

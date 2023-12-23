@@ -8,7 +8,7 @@ import java.util.Locale
 import kotlin.math.sqrt
 
 
-class MemsSensorListener(private val sensorName: String): SensorEventListener {
+class MEMSSensorListener(private val sensorName: String): SensorEventListener {
 
     data class Sample(
         val timestamp: Long = 0,
@@ -17,12 +17,21 @@ class MemsSensorListener(private val sensorName: String): SensorEventListener {
         val z: Float = 0.0F,
     )
 
+    data class Vector3D(
+        val x: Double = 0.0,
+        val y: Double = 0.0,
+        val z: Double = 0.0,
+    )
+
     private val samplesLimit = 1000 * 120
     private var samplesCount: Int = samplesLimit
     private var sampleIndex: Int = 0
-    private var samplesZero: Sample = Sample()
-    private var samplesMean: Sample = Sample()
-    private var samplesDeviation: Sample = Sample()
+    private var samplesZeroMean: Vector3D = Vector3D()
+    private var samplesZeroDeviation: Vector3D = Vector3D()
+    private var samplesMean: Vector3D = Vector3D()
+    private var samplesDeviation: Vector3D = Vector3D()
+    private var samplesMeanWithZero: Vector3D = Vector3D()
+    private var samplesDeviationWithZero: Vector3D = Vector3D()
     private val samplesStorage = Array(samplesLimit) { Sample() }
 
     override fun onSensorChanged(p0: SensorEvent?) {
@@ -39,7 +48,7 @@ class MemsSensorListener(private val sensorName: String): SensorEventListener {
             z = event.values[2],
         )
 
-        sampleIndex++
+        ++sampleIndex
     }
 
 
@@ -48,7 +57,7 @@ class MemsSensorListener(private val sensorName: String): SensorEventListener {
     }
 
 
-    fun getCount(): Int {
+    private fun getCount(): Int {
         return sampleIndex
     }
 
@@ -78,7 +87,7 @@ class MemsSensorListener(private val sensorName: String): SensorEventListener {
     }
 
 
-    fun getTimeStamp(): Float {
+    private fun getTimeStamp(): Float {
         val sample1 = getLastSample()
         val sample0 = samplesStorage[0]
         return (sample1.timestamp - sample0.timestamp) * 1.0e-9F
@@ -98,47 +107,52 @@ class MemsSensorListener(private val sensorName: String): SensorEventListener {
                 mZ += sample.z
             }
 
-            samplesMean = Sample(
-                timestamp = 0,
-                x = (mX / sampleIndex - samplesZero.x).toFloat(),
-                y = (mY / sampleIndex - samplesZero.y).toFloat(),
-                z = (mZ / sampleIndex - samplesZero.z).toFloat(),
+            samplesMean = Vector3D(
+                x = mX / sampleIndex,
+                y = mY / sampleIndex,
+                z = mZ / sampleIndex,
             )
         } else {
-            samplesMean = Sample()
+            samplesMean = Vector3D()
         }
+
+        samplesMeanWithZero = Vector3D(
+            x = samplesMean.x - samplesZeroMean.x,
+            y = samplesMean.y - samplesZeroMean.y,
+            z = samplesMean.z - samplesZeroMean.z,
+        )
     }
 
     fun calculateDeviation() {
-        if (sampleIndex > 0)
-        {
-            val zeroX = samplesZero.x + samplesMean.x
-            val zeroY = samplesZero.y + samplesMean.y
-            val zeroZ = samplesZero.z + samplesMean.z
-
+        if (sampleIndex > 1) {
             var mqX = 0.0
             var mqY = 0.0
             var mqZ = 0.0
 
             for (index: Int in 0 until sampleIndex) {
                 val sample = samplesStorage[index]
-                val dx = sample.x - zeroX
+                val dx = sample.x - samplesMean.x
                 mqX += dx * dx
-                val dy = sample.y - zeroY
+                val dy = sample.y - samplesMean.y
                 mqY += dy * dy
-                val dz = sample.z - zeroZ
+                val dz = sample.z - samplesMean.z
                 mqZ += dz * dz
             }
 
-            samplesDeviation = Sample(
-                timestamp = 0,
-                x = (mqX / sampleIndex).toFloat(),
-                y = (mqY / sampleIndex).toFloat(),
-                z = (mqZ / sampleIndex).toFloat(),
+            samplesDeviation = Vector3D(
+                x = sqrt(mqX / (sampleIndex - 1)),
+                y = sqrt(mqY / (sampleIndex - 1)),
+                z = sqrt(mqZ / (sampleIndex - 1)),
             )
         } else {
-            samplesDeviation = Sample()
+            samplesDeviation = Vector3D()
         }
+
+        samplesDeviationWithZero = Vector3D(
+            x = sqrtSigned(sqr(samplesDeviation.x) - sqr(samplesZeroDeviation.x)),
+            y = sqrtSigned(sqr(samplesDeviation.y) - sqr(samplesZeroDeviation.y)),
+            z = sqrtSigned(sqr(samplesDeviation.z) - sqr(samplesZeroDeviation.z)),
+        )
     }
 
 
@@ -146,42 +160,48 @@ class MemsSensorListener(private val sensorName: String): SensorEventListener {
         return sampleIndex >= samplesLimit
     }
 
-    fun getMean(): Sample {
+    fun getMean(): Vector3D {
         return samplesMean
     }
 
-    fun setZero(zero: Sample) {
-        samplesZero = zero
+    fun setZero(
+        zeroMean: Vector3D,
+        zeroDeviation: Vector3D,
+    ) {
+        samplesZeroMean = zeroMean
+        samplesZeroDeviation = zeroDeviation
     }
 
-    fun getDeviation(): Sample {
+    fun getDeviation(): Vector3D {
         return samplesDeviation
     }
 
-    fun getZero(): Sample {
-        return samplesZero
-    }
 
-    fun getLastSample(): Sample {
+    private fun getLastSample(): Sample {
         return samplesStorage[if (sampleIndex == 0) 0 else sampleIndex-1]
     }
 
     fun getZeroInfo(): String {
         return String.format(
-            Locale.US, "\n*** %s ***\nZero: %f, %f, %f @ %f\n",
+            Locale.US, "\n*** %s ***\nZero mean: %f, %f, %f @ %f\nZero st.dev: %f, %f, %f @ %f\n",
             sensorName,
-            samplesZero.x,
-            samplesZero.y,
-            samplesZero.z,
-            length(samplesZero),
+            samplesZeroMean.x,
+            samplesZeroMean.y,
+            samplesZeroMean.z,
+            length(samplesZeroMean),
+            samplesZeroDeviation.x,
+            samplesZeroDeviation.y,
+            samplesZeroDeviation.z,
+            length(samplesZeroDeviation),
         )
     }
 
     fun getAnalyzeInfo(): String {
         return String.format(
-            Locale.US, "\n*** %s ***\nCount: %d\nMean: %f, %f, %f @ %f\nDeviation: %g, %g, %g @ %g\n",
+            Locale.US, "\n*** %s ***\n" +
+                    "Mean: %f, %f, %f @ %f\nSt.dev: %g, %g, %g @ %g\n" +
+                    "Mean (*): %f, %f, %f @ %f\nSt.dev (*): %g, %g, %g @ %g\n",
             sensorName,
-            getCount(),
             samplesMean.x,
             samplesMean.y,
             samplesMean.z,
@@ -190,6 +210,14 @@ class MemsSensorListener(private val sensorName: String): SensorEventListener {
             samplesDeviation.y,
             samplesDeviation.z,
             length(samplesDeviation),
+            samplesMeanWithZero.x,
+            samplesMeanWithZero.y,
+            samplesMeanWithZero.z,
+            length(samplesMeanWithZero),
+            samplesDeviationWithZero.x,
+            samplesDeviationWithZero.y,
+            samplesDeviationWithZero.z,
+            length(samplesDeviationWithZero),
         )
     }
 
@@ -212,6 +240,18 @@ class MemsSensorListener(private val sensorName: String): SensorEventListener {
     companion object {
         fun length(sample: Sample): Double {
             return sqrt(0.0 + sample.x * sample.x + sample.y * sample.y + sample.z * sample.z)
+        }
+
+        fun length(sample: Vector3D): Double {
+            return sqrt(sqr(sample.x) + sqr(sample.y) + sqr(sample.z))
+        }
+
+        fun sqr(x: Double) :Double {
+            return x * x
+        }
+
+        fun sqrtSigned(x: Double) :Double {
+            return if (x < 0) -sqrt(-x) else sqrt(x)
         }
     }
 }
