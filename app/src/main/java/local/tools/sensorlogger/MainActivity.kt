@@ -7,6 +7,7 @@ import android.content.pm.PackageManager
 import android.hardware.Sensor
 import android.hardware.SensorManager
 import android.os.Bundle
+import android.widget.ArrayAdapter
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import com.google.android.material.snackbar.Snackbar
@@ -63,17 +64,26 @@ class MainActivity : AppCompatActivity() {
             loggerResetCalibration()
         }
 
+        sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
+        accelerometerSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)!!
+        gyroscopeSensor = sensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE)!!
+        accelerometerListener = MemsSensorListener("Accelerometer")
+        gyroscopeListener = MemsSensorListener("Gyroscope")
+
+        val spinnerItems = listOf(
+            "Both sensors (accelerometer & gyroscope)",
+            "Only " + accelerometerSensor.name,
+            "Only " + gyroscopeSensor.name,
+        )
+
+        val spinnerAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, spinnerItems)
+        spinnerAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        binding.spinnerSensor.adapter = spinnerAdapter
 
         if (
             ActivityCompat.checkSelfPermission(this, Manifest.permission.HIGH_SAMPLING_RATE_SENSORS)
                 == PackageManager.PERMISSION_GRANTED
         ) {
-            sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
-            accelerometerSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
-            accelerometerListener = MemsSensorListener("Accelerometer")
-            gyroscopeSensor = sensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
-            gyroscopeListener = MemsSensorListener("Gyroscope")
-
             binding.buttonStart.isEnabled = true
         }
 
@@ -95,8 +105,7 @@ class MainActivity : AppCompatActivity() {
         binding.buttonStop.isEnabled = false
         binding.buttonSave.isEnabled = true
         binding.buttonAnalyze.isEnabled = true
-        binding.switchAccel.isEnabled = true
-        binding.switchGyro.isEnabled = true
+        binding.spinnerSensor.isEnabled = true
 
         updateInfo()
 
@@ -108,23 +117,28 @@ class MainActivity : AppCompatActivity() {
         if (isLoggerStarted)
             return
 
+        when (binding.spinnerSensor.selectedItemPosition) {
+            0 -> {
+                sensorManager.registerListener(accelerometerListener, accelerometerSensor, SensorManager.SENSOR_DELAY_FASTEST)
+                sensorManager.registerListener(gyroscopeListener, gyroscopeSensor, SensorManager.SENSOR_DELAY_FASTEST)
+            }
+            1 -> {
+                sensorManager.registerListener(accelerometerListener, accelerometerSensor, SensorManager.SENSOR_DELAY_FASTEST)
+            }
+            2 -> {
+                sensorManager.registerListener(gyroscopeListener, gyroscopeSensor, SensorManager.SENSOR_DELAY_FASTEST)
+            }
+            else -> return
+        }
+
         sensorTimer = Timer()
         sensorTimer.schedule(SensorTask(this), 0, timerPeriod)
-
-        if (binding.switchAccel.isChecked) {
-            sensorManager.registerListener(accelerometerListener, accelerometerSensor, SensorManager.SENSOR_DELAY_FASTEST)
-        }
-
-        if (binding.switchGyro.isChecked) {
-            sensorManager.registerListener(gyroscopeListener, gyroscopeSensor, SensorManager.SENSOR_DELAY_FASTEST)
-        }
 
         binding.buttonStart.isEnabled = false
         binding.buttonStop.isEnabled = true
         binding.buttonSave.isEnabled = false
         binding.buttonAnalyze.isEnabled = false
-        binding.switchAccel.isEnabled = false
-        binding.switchGyro.isEnabled = false
+        binding.spinnerSensor.isEnabled = false
 
         updateInfo()
 
